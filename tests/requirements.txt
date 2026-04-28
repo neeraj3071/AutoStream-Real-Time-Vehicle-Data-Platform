@@ -1,0 +1,5 @@
+"""Tests requirements."""
+pytest==7.4.3
+pytest-asyncio==0.22.0
+pytest-cov==4.1.0
+httpx==0.26.0

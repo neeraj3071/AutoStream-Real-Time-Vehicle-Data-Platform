@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - autostream
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - autostream
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka-init
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    command: |
+      bash -c '
+        echo "Waiting for Kafka to be ready..."
+        sleep 10
+        
+        echo "Creating topics..."
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.telemetry --partitions 3 --replication-factor 1 --config retention.ms=86400000
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.processed --partitions 3 --replication-factor 1 --config retention.ms=86400000
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.alerts --partitions 1 --replication-factor 1 --config retention.ms=604800000
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.dlq --partitions 1 --replication-factor 1 --config retention.ms=604800000
+        
+        echo "Topics created successfully"
+      '
+    networks:
+      - autostream
+
+networks:
+  autostream:
+    driver: bridge

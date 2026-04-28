@@ -1,0 +1,252 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    hostname: postgres
+    container_name: autostream-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: vehicle_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - autostream
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: autostream-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - autostream
+
+  # Apache Kafka (with Zookeeper)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    container_name: autostream-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - autostream
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    container_name: autostream-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 24
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - autostream
+
+  # Kafka Topic Initialization
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka-init
+    container_name: autostream-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: |
+      bash -c '
+        echo "Creating Kafka topics..."
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.telemetry --partitions 3 --replication-factor 1 --config retention.ms=86400000 --config compression.type=snappy
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.processed --partitions 3 --replication-factor 1 --config retention.ms=86400000
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.alerts --partitions 1 --replication-factor 1 --config retention.ms=604800000
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic vehicle.dlq --partitions 1 --replication-factor 1
+        echo "Topics created successfully"
+      '
+    networks:
+      - autostream
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    hostname: prometheus
+    container_name: autostream-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    depends_on:
+      - kafka
+    networks:
+      - autostream
+
+  # Grafana Visualization
+  grafana:
+    image: grafana/grafana:latest
+    hostname: grafana
+    container_name: autostream-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana-datasources.json:/etc/grafana/provisioning/datasources/prometheus.json
+    depends_on:
+      - prometheus
+    networks:
+      - autostream
+
+  # Vehicle Simulator Service
+  simulator:
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    hostname: simulator
+    container_name: autostream-simulator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: vehicle.telemetry
+      SIMULATION_RATE: 100
+      NUM_VEHICLES: 5
+      LOG_LEVEL: INFO
+    volumes:
+      - ./simulator:/app
+    networks:
+      - autostream
+    restart: unless-stopped
+
+  # Stream Processor Service
+  processor:
+    build:
+      context: .
+      dockerfile: processor/Dockerfile
+    hostname: processor
+    container_name: autostream-processor
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_CONSUMER_TOPIC: vehicle.telemetry
+      KAFKA_PROCESSED_TOPIC: vehicle.processed
+      KAFKA_ALERTS_TOPIC: vehicle.alerts
+      KAFKA_GROUP_ID: vehicle-processor
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: vehicle_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ANOMALY_DETECTION_ENABLED: "true"
+      LOG_LEVEL: INFO
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./processor:/app
+    networks:
+      - autostream
+    restart: unless-stopped
+
+  # FastAPI Backend Service
+  api:
+    build:
+      context: .
+      dockerfile: api-service/Dockerfile
+    hostname: api
+    container_name: autostream-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      FASTAPI_HOST: 0.0.0.0
+      FASTAPI_PORT: 8000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: vehicle_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET_KEY: autostream-secret-key-change-in-production
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_HOURS: 24
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api-service:/app
+    networks:
+      - autostream
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  autostream:
+    driver: bridge

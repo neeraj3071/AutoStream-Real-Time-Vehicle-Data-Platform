@@ -1,6 +1,3 @@
--- Create database
-CREATE DATABASE IF NOT EXISTS vehicle_db;
-
 -- Create vehicle_telemetry table
 CREATE TABLE IF NOT EXISTS vehicle_telemetry (
     id SERIAL PRIMARY KEY,
@@ -11,11 +8,13 @@ CREATE TABLE IF NOT EXISTS vehicle_telemetry (
     engine_temp FLOAT NOT NULL,
     fuel_level FLOAT NOT NULL,
     battery_voltage FLOAT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_vehicle_id (vehicle_id),
-    INDEX idx_timestamp (timestamp),
-    INDEX idx_vehicle_timestamp (vehicle_id, timestamp DESC)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create indexes for vehicle_telemetry
+CREATE INDEX IF NOT EXISTS idx_vehicle_id ON vehicle_telemetry(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_timestamp ON vehicle_telemetry(timestamp);
+CREATE INDEX IF NOT EXISTS idx_vehicle_timestamp ON vehicle_telemetry(vehicle_id, timestamp DESC);
 
 -- Create alerts table
 CREATE TABLE IF NOT EXISTS alerts (
@@ -25,11 +24,13 @@ CREATE TABLE IF NOT EXISTS alerts (
     severity VARCHAR(20) NOT NULL,
     message TEXT NOT NULL,
     timestamp TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_vehicle_id (vehicle_id),
-    INDEX idx_severity (severity),
-    INDEX idx_timestamp (timestamp)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create indexes for alerts
+CREATE INDEX IF NOT EXISTS idx_alerts_vehicle_id ON alerts(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
+CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts(timestamp);
 
 -- Create processed_events table (for audit trail)
 CREATE TABLE IF NOT EXISTS processed_events (
@@ -38,7 +39,9 @@ CREATE TABLE IF NOT EXISTS processed_events (
     source_timestamp TIMESTAMP NOT NULL,
     processed_at TIMESTAMP NOT NULL,
     status VARCHAR(20) NOT NULL,
-    error_message TEXT,
-    INDEX idx_vehicle_id (vehicle_id),
-    INDEX idx_processed_at (processed_at)
+    error_message TEXT
 );
+
+-- Create indexes for processed_events
+CREATE INDEX IF NOT EXISTS idx_processed_events_vehicle_id ON processed_events(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_processed_events_processed_at ON processed_events(processed_at);

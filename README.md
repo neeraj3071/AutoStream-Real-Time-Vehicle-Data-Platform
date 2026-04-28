@@ -16,13 +16,13 @@ AutoStream is an end-to-end solution for collecting and analyzing vehicle teleme
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT APPLICATIONS                       │
-│                    (Web Dashboard, Mobile Apps)                  │
+│                        CLIENT APPLICATIONS                      │
+│                    (Web Dashboard, Mobile Apps)                 │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          │ (HTTP/REST)
                          ▼
-┌─────────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────────-┐
 │                    FASTAPI BACKEND SERVICE                       │
 │  - JWT Authentication      - Query APIs                          │
 │  - Redis Caching          - Prometheus Metrics                   │
@@ -34,9 +34,9 @@ AutoStream is an end-to-end solution for collecting and analyzing vehicle teleme
     ┌────────────────┐              ┌──────────────────┐
     │   PostgreSQL   │              │      Redis       │
     │                │              │                  │
-    │ - Telemetry   │              │ - Cache Layer    │
-    │ - Alerts      │              │ - Session Store  │
-    │ - Audit Logs  │              │                  │
+    │ - Telemetry    │              │ - Cache Layer    │
+    │ - Alerts       │              │ - Session Store  │
+    │ - Audit Logs   │              │                  │
     └────────────────┘              └──────────────────┘
              ▲
              │
@@ -50,18 +50,18 @@ AutoStream is an end-to-end solution for collecting and analyzing vehicle teleme
     │                 │
     │ vehicle.        │
     │ alerts          │ (Generated alerts)
-    └────────────────┘
+    └────────────────-┘
              ▲
              │
              │ (Apache Kafka)
              │
 ┌────────────┴──────────────────────────────────────────────────────┐
-│          STREAM PROCESSOR SERVICE                                  │
+│          STREAM PROCESSOR SERVICE                                 │
 │  - Data Validation         - Anomaly Detection                    │
 │  - Event Transformation    - Dead-Letter Queue (DLQ)              │
 │  - Database Persistence    - Prometheus Metrics                   │
 │  - Alert Generation        - Structured Logging                   │
-└─────────────┬──────────────────────────────────────────────────────┘
+└─────────────┬─────────────────────────────────────────────────────┘
               │
               │ (Apache Kafka)
               │
@@ -73,7 +73,7 @@ AutoStream is an end-to-end solution for collecting and analyzing vehicle teleme
               │ (Kafka Producer)
               │
 ┌─────────────┴──────────────────────────────────────────────────────┐
-│          VEHICLE SIMULATOR SERVICE                                  │
+│          VEHICLE SIMULATOR SERVICE                                 │
 │  - Generates realistic CAN-like signals                            │
 │  - Simulates vehicle physics                                       │
 │  - Injects anomalies                                               │
@@ -91,7 +91,7 @@ AutoStream is an end-to-end solution for collecting and analyzing vehicle teleme
     └───────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────┐
-│                    OBSERVABILITY STACK                            │
+│                    OBSERVABILITY STACK                           │
 ├──────────────────────────────────────────────────────────────────┤
 │  Prometheus ────────► Scrapes metrics from all services          │
 │  Grafana ───────────► Visualizes metrics and alerts              │

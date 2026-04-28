@@ -218,7 +218,7 @@ REST API for querying vehicle data and system metrics.
 - **Default Credentials**: admin/admin
 - **Dashboards**: Metrics visualization
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Docker Desktop (with Docker Compose)
@@ -659,4 +659,3 @@ For issues and questions:
 
 ---
 
-**Built with ❤️ for scalable, real-time vehicle data processing**

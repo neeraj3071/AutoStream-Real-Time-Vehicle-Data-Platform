@@ -48,11 +48,11 @@ class VehicleSimulator:
         
         for event in events:
             try:
+                # Let Kafka's default partitioner handle partitioning using the key.
                 future = self.producer.send(
                     Config.KAFKA_TOPIC,
                     value=event.to_json(),
                     key=event.vehicle_id.encode('utf-8'),
-                    partition=hash(event.vehicle_id) % 3,  # Partition by vehicle_id
                 )
                 # Optional: Wait for send to complete (can reduce throughput)
                 # record_metadata = future.get(timeout=10)
